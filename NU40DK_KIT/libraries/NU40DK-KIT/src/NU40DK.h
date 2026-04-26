@@ -19,7 +19,9 @@ class NU40DK
     
     OLed            lcd;
     SDLib::SDClass& sd;
+    Button          btn;
 
+    
     bool begin(int baud);
     bool update(void);
 

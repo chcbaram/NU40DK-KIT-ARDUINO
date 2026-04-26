@@ -41,10 +41,11 @@ bool NU40DK::begin(int baud)
 
   lcd.logPrint("NU40DK Begin...");
   lcd.logPrint(" ");
+  
+  btn.begin();
 
   cliMgrInit();
   sdInit();
-
 
 
   if (sdIsDetected())

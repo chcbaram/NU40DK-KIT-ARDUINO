@@ -4,7 +4,5 @@
 #include <Arduino.h>
 
 
-#define _PINNUM(port, pin)    ((port)*32 + (pin))
-
 
 #endif

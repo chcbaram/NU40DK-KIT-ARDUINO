@@ -10,6 +10,7 @@
 #include "cli/cli_mgr.h"
 #include "sd/sd_mgr.h"
 #include "i2s/i2s.h"
+#include "button/button.h"
 
 void driverInit(void);
 

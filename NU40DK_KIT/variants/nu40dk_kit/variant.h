@@ -31,6 +31,8 @@
 
 #include "WVariant.h"
 
+#define _PINNUM(port, pin)    ((port)*32 + (pin))
+
 #ifdef __cplusplus
 extern "C"
 {
