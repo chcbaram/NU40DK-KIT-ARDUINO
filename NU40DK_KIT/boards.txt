@@ -1,0 +1,69 @@
+menu.softdevice=SoftDevice
+menu.debug=Debug Level
+menu.debug_output=Debug Port
+
+
+# -----------------------------------
+# NUCODE NU40DK-KIT
+# -----------------------------------
+nu40dk_kit.name=NUCODE NU40DK-KIT
+
+# VID/PID for Bootloader, Arduino & CircuitPython
+nu40dk_kit.vid.0=0x239A
+nu40dk_kit.pid.0=0x8029
+nu40dk_kit.vid.1=0x239A
+nu40dk_kit.pid.1=0x0029
+nu40dk_kit.vid.2=0x239A
+nu40dk_kit.pid.2=0x002A
+nu40dk_kit.vid.3=0x239A
+nu40dk_kit.pid.3=0x802A
+
+# Upload
+nu40dk_kit.bootloader.tool=bootburn
+nu40dk_kit.upload.tool=nrfutil
+nu40dk_kit.upload.protocol=nrfutil
+nu40dk_kit.upload.use_1200bps_touch=true
+nu40dk_kit.upload.wait_for_upload_port=true
+nu40dk_kit.upload.maximum_size=815104
+nu40dk_kit.upload.maximum_data_size=237568
+
+# Build
+nu40dk_kit.build.mcu=cortex-m4
+nu40dk_kit.build.f_cpu=64000000
+nu40dk_kit.build.board=NU40DK_KIT
+nu40dk_kit.build.core=nRF5
+nu40dk_kit.build.variant=nu40dk_kit
+nu40dk_kit.build.usb_manufacturer="Adafruit"
+nu40dk_kit.build.usb_product="NUCODE NU40DK-KIT"
+nu40dk_kit.build.extra_flags=-DNRF52840_XXAA {build.flags.usb}
+nu40dk_kit.build.ldscript=nrf52840_s140_v6.ld
+nu40dk_kit.build.openocdscript=scripts/openocd/daplink_nrf52.cfg
+nu40dk_kit.build.vid=0x239A
+nu40dk_kit.build.pid=0x8029
+nu40dk_kit.build.uf2_family=0xADA52840
+
+# Menu: SoftDevice
+nu40dk_kit.menu.softdevice.s140v6=S140 6.1.1
+nu40dk_kit.menu.softdevice.s140v6.build.sd_name=s140
+nu40dk_kit.menu.softdevice.s140v6.build.sd_version=6.1.1
+nu40dk_kit.menu.softdevice.s140v6.build.sd_fwid=0x00B6
+
+# Menu: Debug Level
+nu40dk_kit.menu.debug.l0=Level 0 (Release)
+nu40dk_kit.menu.debug.l0.build.debug_flags=-DCFG_DEBUG=0
+nu40dk_kit.menu.debug.l1=Level 1 (Error Message)
+nu40dk_kit.menu.debug.l1.build.debug_flags=-DCFG_DEBUG=1
+nu40dk_kit.menu.debug.l2=Level 2 (Full Debug)
+nu40dk_kit.menu.debug.l2.build.debug_flags=-DCFG_DEBUG=2
+nu40dk_kit.menu.debug.l3=Level 3 (Segger SystemView)
+nu40dk_kit.menu.debug.l3.build.debug_flags=-DCFG_DEBUG=3
+nu40dk_kit.menu.debug.l3.build.sysview_flags=-DCFG_SYSVIEW=1
+
+# Menu: Debug Port
+nu40dk_kit.menu.debug_output.serial=Serial
+nu40dk_kit.menu.debug_output.serial.build.logger_flags=-DCFG_LOGGER=0
+nu40dk_kit.menu.debug_output.serial1=Serial1
+nu40dk_kit.menu.debug_output.serial1.build.logger_flags=-DCFG_LOGGER=1 -DCFG_TUSB_DEBUG=CFG_DEBUG
+nu40dk_kit.menu.debug_output.rtt=Segger RTT
+nu40dk_kit.menu.debug_output.rtt.build.logger_flags=-DCFG_LOGGER=2 -DCFG_TUSB_DEBUG=CFG_DEBUG -DSEGGER_RTT_MODE_DEFAULT=SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL
+
