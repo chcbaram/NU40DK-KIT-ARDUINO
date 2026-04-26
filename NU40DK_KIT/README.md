@@ -1,3 +1,6 @@
+# NUCODE NU40DK-KIT
+- https://chcbaram.github.io/nu40dk-kit-board-index/package_nu40dk_kit_index.json
+
 # Arduino Core for Adafruit Bluefruit nRF52 Boards
 
 [![Build Status](https://github.com/adafruit/Adafruit_nRF52_Arduino/workflows/Build/badge.svg)](https://github.com/adafruit/Adafruit_nRF52_Arduino/actions)
