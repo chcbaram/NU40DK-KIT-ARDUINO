@@ -19,6 +19,7 @@ class OLed : public Adafruit_SSD1306
     bool isInit() { return is_init; };
 
     void logPrint(String msg, bool is_serial_log = true);
+    void logPrintf(const char *fmt, ...);
 
   private:
     bool is_init;

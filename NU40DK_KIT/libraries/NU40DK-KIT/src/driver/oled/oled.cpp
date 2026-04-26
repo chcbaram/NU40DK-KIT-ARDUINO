@@ -146,3 +146,43 @@ void OLed::logPrint(String msg, bool is_serial_log)
   }
   display();
 }
+
+void OLed::logPrintf(const char *fmt, ...)
+{
+char buf[128]; // 메시지를 담을 충분한 크기의 버퍼 (필요에 따라 조절)
+  
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+
+  String msg = String(buf);
+
+  // --- 이후 로직은 logPrint와 동일하게 구성 ---
+  
+  // 1. Serial 로그 출력 (기본적으로 출력하도록 설정)
+  // Serial.println(msg);
+
+  int len = msg.length();
+  if (len == 0)
+  {
+    pushOledLine("");
+  }
+  else
+  {
+    // 2. 글자 수에 따라 줄바꿈 처리하여 oledLines 배열에 푸시
+    for (int i = 0; i < len; i += MAX_CHARS_PER_LINE)
+    {
+      pushOledLine(msg.substring(i, min(i + MAX_CHARS_PER_LINE, len)));
+    }
+  }
+
+  // 3. OLED 화면 갱신
+  clearDisplay();
+  setCursor(0, 0);
+  for (int i = 0; i < MAX_OLED_LINES; i++)
+  {
+    println(oledLines[i]);
+  }
+  display();
+}
