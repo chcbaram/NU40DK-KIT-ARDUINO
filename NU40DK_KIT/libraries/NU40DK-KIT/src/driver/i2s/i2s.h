@@ -119,6 +119,7 @@ bool     i2sSetSampleRate(uint32_t sample_rate);
 uint32_t i2sGetSampleRate(void);
 int16_t  i2sGetVolume(void);
 bool     i2sSetVolume(int16_t volume);
+float    i2sSin(float x);
 
 
 #endif

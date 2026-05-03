@@ -9,6 +9,7 @@ typedef enum
 {
   I2S_CMD_PLAY_FILE,
   I2S_CMD_BEEP,
+  I2S_CMD_WRITE,
   I2S_CMD_STOP
 } i2s_cmd_type_t;
 
@@ -16,7 +17,8 @@ typedef enum
 typedef struct
 {
   i2s_cmd_type_t cmd;
-  char           file_name[64]; // 재생할 파일 경로 (길이 제한)
+  uint32_t       id;
+  char           file_name[64]; 
 
   struct
   {
@@ -45,8 +47,13 @@ typedef struct
 
 
 
-I2S_MGR::I2S_MGR() : is_init(false), m_volume(100), m_cmd_queue(NULL), m_task_handle(NULL)
+I2S_MGR::I2S_MGR() : is_init(false), m_volume(100), m_next_id(1), m_stop_id(0), m_cmd_queue(NULL)
 {
+  for (int i = 0; i < I2S_MAX_WORKERS; i++)
+  {
+    m_worker_handles[i] = NULL;
+    m_active_ids[i] = 0; // 0은 대기 중(ID 없음)을 의미
+  }
 }
 
 I2S_MGR::~I2S_MGR()
@@ -66,24 +73,21 @@ bool I2S_MGR::begin(void)
     ret = i2sStart();    
   }
   
-  m_cmd_queue = xQueueCreate(4, sizeof(i2s_msg_t));
+  m_cmd_queue = xQueueCreate(8, sizeof(i2s_msg_t));
   if (m_cmd_queue == NULL) 
     return false;
 
-  BaseType_t task_ret = xTaskCreate(
-  I2S_MGR::i2sTask,         // 태스크 함수
-  "i2s_task",               // 태스크 이름
-  4096,                     // 스택 크기 (필요에 따라 조절)
-  this,                     // 파라미터 (클래스 인스턴스 포인터)
-  configMAX_PRIORITIES - 1, // 오디오 끊김 방지를 위한 높은 우선순위
-  &m_task_handle            // 태스크 핸들
-  );
-
-  if (task_ret != pdPASS)
+  for (int i = 0; i < I2S_MAX_WORKERS; i++)
   {
-    vQueueDelete(m_cmd_queue);
-    m_cmd_queue = NULL;
-    return false;
+    BaseType_t task_ret = xTaskCreate(
+    I2S_MGR::i2sWorkerTask,
+    "i2s_worker",
+    4096,
+    this,
+    configMAX_PRIORITIES - 1,
+    &m_worker_handles[i]);
+
+    if (task_ret != pdPASS) return false;
   }
 
   is_init = true;
@@ -91,9 +95,23 @@ bool I2S_MGR::begin(void)
   return ret;
 }
 
-bool I2S_MGR::isBusy(void) const
+bool I2S_MGR::isBusy(uint32_t id) const
 {
-  return m_is_busy;
+  if (id == 0)
+  {
+    for (int i = 0; i < I2S_MAX_WORKERS; i++)
+    {
+      if (m_active_ids[i] != 0) return true;
+    }    
+  }
+  else
+  {
+    for (int i = 0; i < I2S_MAX_WORKERS; i++)
+    {
+      if (m_active_ids[i] == id) return true;
+    }
+  }
+  return false;
 }
 
 void I2S_MGR::setVolume(uint8_t vol)
@@ -112,92 +130,136 @@ bool I2S_MGR::setSampleRate(uint32_t sample_rate)
   return i2sSetSampleRate(sample_rate);
 }
 
-bool I2S_MGR::playFile(const char *file_name)
+uint32_t I2S_MGR::playFile(const char *file_name)
 {
-  if (!is_init || m_cmd_queue == NULL) return false;
+  if (!is_init || m_cmd_queue == NULL) return 0;
 
   i2s_msg_t msg;
   msg.cmd = I2S_CMD_PLAY_FILE;
+  vTaskSuspendAll();
+  msg.id  = m_next_id++;
+  if (m_next_id == 0) m_next_id = 1; 
+  xTaskResumeAll();
+
   strncpy(msg.file_name, file_name, sizeof(msg.file_name) - 1);
   msg.file_name[sizeof(msg.file_name) - 1] = '\0';
 
-  // 큐가 가득 차면 즉시 false 리턴
   if (xQueueSend(m_cmd_queue, &msg, 0) != pdPASS)
   {
-    return false;
+    return 0;
   }
-  return true;
+  return msg.id; // 할당된 ID 반환
 }
 
-bool I2S_MGR::beep(uint32_t freq_hz, uint32_t duration_ms)
+uint32_t I2S_MGR::beep(uint32_t freq_hz, uint32_t duration_ms)
 {
-  if (!is_init || m_cmd_queue == NULL) return false;
+  if (!is_init || m_cmd_queue == NULL) return 0;
 
   i2s_msg_t msg;
-  msg.cmd              = I2S_CMD_BEEP;
+  msg.cmd = I2S_CMD_BEEP;
+  vTaskSuspendAll();
+  msg.id  = m_next_id++;
+  if (m_next_id == 0) m_next_id = 1;
+  xTaskResumeAll();
+
   msg.beep.freq_hz     = freq_hz;
   msg.beep.duration_ms = duration_ms;
 
   if (xQueueSend(m_cmd_queue, &msg, 0) != pdPASS)
   {
-    return false;
+    return 0;
   }
-  return true;
+  return msg.id;
 }
 
-void I2S_MGR::stop(void)
+void I2S_MGR::stop(uint32_t id)
 {
-  if (!is_init || m_cmd_queue == NULL) return;
+  if (!is_init || id == 0) return;
 
-  i2s_msg_t msg;
-  msg.cmd = I2S_CMD_STOP;
+  if (!isBusy(id)) return;
 
-  xQueueSendToFront(m_cmd_queue, &msg, 0);
-  
-  i2sStopBeep();
+  m_stop_id = id;
 
   uint32_t start_time = millis();
-  while (m_is_busy)
-  {    
-    if (millis() - start_time >= 100)
-    {
-      break;
-    }    
+  while (isBusy(id))
+  {
+    if (millis() - start_time >= 100) break;
     vTaskDelay(pdMS_TO_TICKS(1));
+  }
+
+  if (m_stop_id == id)
+  {
+    m_stop_id = 0;
   }
 }
 
-void I2S_MGR::i2sTask(void *pvParameters)
+void I2S_MGR::stopAll(void)
 {
-  I2S_MGR  *p_mgr = (I2S_MGR *)pvParameters;
-  i2s_msg_t msg;
+  if (!is_init) return;
 
-  while (1)
-  {    
-    if (xQueueReceive(p_mgr->m_cmd_queue, &msg, portMAX_DELAY) == pdPASS)
+  for (int i = 0; i < I2S_MAX_WORKERS; i++)
+  {
+    uint32_t id = m_active_ids[i];
+    if (id != 0)
     {
-      p_mgr->m_is_busy = true;
-
-      switch (msg.cmd)
-      {
-        case I2S_CMD_PLAY_FILE:
-          p_mgr->processPlayFile(msg.file_name);
-          break;
-
-        case I2S_CMD_BEEP:
-          p_mgr->processBeep(msg.beep.freq_hz, msg.beep.duration_ms);
-          break;
-
-        case I2S_CMD_STOP:
-          break;
-      }
-
-      p_mgr->m_is_busy = false;
+      stop(id);
     }
   }
 }
 
-void I2S_MGR::processPlayFile(const char *file_name)
+void I2S_MGR::i2sWorkerTask(void *pvParameters)
+{
+  I2S_MGR  *p_mgr = (I2S_MGR *)pvParameters;
+  i2s_msg_t msg;
+
+  // 현재 태스크가 관리할 인덱스 찾기
+  int          worker_idx     = -1;
+  TaskHandle_t current_handle = xTaskGetCurrentTaskHandle();
+  for (int i = 0; i < I2S_MAX_WORKERS; i++)
+  {
+    if (p_mgr->m_worker_handles[i] == current_handle)
+    {
+      worker_idx = i;
+      break;
+    }
+  }
+
+  while (1)
+  {
+    if (xQueueReceive(p_mgr->m_cmd_queue, &msg, portMAX_DELAY) == pdPASS)
+    {
+      if (msg.cmd == I2S_CMD_STOP) continue;
+
+      // 워커가 할당받은 ID를 등록하여 활성 상태로 전환
+      if (worker_idx != -1)
+      {
+        p_mgr->m_active_ids[worker_idx] = msg.id;
+      }
+
+      switch (msg.cmd)
+      {
+        case I2S_CMD_PLAY_FILE:
+          p_mgr->processPlayFile(msg.id, msg.file_name);
+          break;
+
+        case I2S_CMD_BEEP:
+          p_mgr->processBeep(msg.id, msg.beep.freq_hz, msg.beep.duration_ms);
+          break;
+
+        default:
+          break;
+      }
+
+      // 작업 완료 후 ID 해제
+      if (worker_idx != -1)
+      {
+        p_mgr->m_active_ids[worker_idx] = 0;
+      }
+    }
+  }
+}
+
+void I2S_MGR::processPlayFile(uint32_t id, const char *file_name)
 {
   File fp = SD.open(file_name, FILE_READ);
   if (!fp) return;
@@ -233,12 +295,10 @@ void I2S_MGR::processPlayFile(const char *file_name)
     return;
   }
 
-
-  i2s_msg_t next_msg;
-
   while (fp.available())
   {
-    if (xQueuePeek(m_cmd_queue, &next_msg, 0) == pdPASS)
+    // 정지 요청된 ID가 내 ID인지 확인
+    if (m_stop_id == id)
     {
       break;
     }
@@ -266,13 +326,59 @@ void I2S_MGR::processPlayFile(const char *file_name)
         i2sWrite(ch, buf_data, 2);
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(1)); 
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
 
   fp.close();
 }
 
-void I2S_MGR::processBeep(uint32_t freq_hz, uint32_t duration_ms)
+void I2S_MGR::processBeep(uint32_t id, uint32_t freq_hz, uint32_t duration_ms)
 {
-  i2sPlayBeep(freq_hz, m_volume, duration_ms);    
+  uint32_t num_samples = i2sGetFrameSize(); // 프레임 사이즈
+  float    sample_point;
+  int16_t  sample[num_samples];
+  uint16_t sample_index = 0;
+  float    div_freq;
+  int8_t   mix_ch;
+  int32_t  volume_out;
+
+
+  uint16_t current_vol = constrain(m_volume, 0, 100);
+  volume_out = (INT16_MAX / 40) * current_vol / 100;
+
+  // 비어있는 I2S 믹서 채널 할당받음
+  mix_ch = i2sGetEmptyChannel();
+  if (mix_ch < 0)
+  {
+    return;
+  }
+
+  div_freq = (float)i2sGetSampleRate() / (float)freq_hz;
+
+  uint32_t pre_time = millis();
+
+  while (millis() - pre_time <= duration_ms)
+  {
+    if (m_stop_id == id)
+    {
+      break;
+    }
+
+    if (i2sAvailableForWrite(mix_ch) >= num_samples)
+    {
+      for (uint32_t i = 0; i < num_samples; i += 2)
+      {
+        sample_point = i2sSin(2.0f * (float)M_PI * (float)sample_index / div_freq);
+        
+        sample[i + 0] = (int16_t)(sample_point * volume_out); // Left
+        sample[i + 1] = (int16_t)(sample_point * volume_out); // Right
+        
+        sample_index = (sample_index + 1) % (int)div_freq;
+      }
+
+      i2sWrite(mix_ch, (int16_t *)sample, num_samples);
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
 }
