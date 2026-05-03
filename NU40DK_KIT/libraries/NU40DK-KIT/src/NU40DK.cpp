@@ -43,6 +43,7 @@ bool NU40DK::begin(int baud)
   lcd.logPrint(" ");
   
   btn.begin();
+  i2s.begin();
 
   cliMgrInit();
   sdInit();

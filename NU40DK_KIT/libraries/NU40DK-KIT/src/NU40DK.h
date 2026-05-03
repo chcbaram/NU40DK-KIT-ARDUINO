@@ -20,6 +20,7 @@ class NU40DK
     OLed            lcd;
     SDLib::SDClass& sd;
     Button          btn;
+    I2S_MGR         i2s;
 
     
     bool begin(int baud);
